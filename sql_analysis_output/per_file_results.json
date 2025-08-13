@@ -1,0 +1,189 @@
+{
+  "./sql_files\\complex_and_redundant.sql": {
+    "entities": [
+      "orders",
+      "products",
+      "recent_orders",
+      "users"
+    ],
+    "attributes": [
+      "active",
+      "id",
+      "name",
+      "order_date",
+      "order_id",
+      "product_id",
+      "product_name",
+      "quantity",
+      "signup_date",
+      "status",
+      "user_id"
+    ],
+    "query_types": [
+      "SELECT"
+    ],
+    "queries": [
+      {
+        "unique_id": "7c97ed2cc0725ecc424508ee621db958c6d533a5c061ca088e632e989b6e2ef6",
+        "canonical": "SELECT u.id, u.name, ( SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id AND o.status = :param1 ) AS completed_orders FROM users u WHERE u.signup_date > :param2",
+        "analysis": {
+          "entities": [
+            "users",
+            "orders"
+          ],
+          "attributes": [
+            "id",
+            "name",
+            "signup_date",
+            "user_id",
+            "status"
+          ],
+          "query_type": "SELECT",
+          "optimization": {
+            "summary": "Consider using a JOIN instead of a subquery for better performance.",
+            "rewritten_query": "SELECT u.id, u.name, COUNT(o.id) AS completed_orders FROM users u LEFT JOIN orders o ON o.user_id = u.id AND o.status = 'completed' WHERE u.signup_date > '2025-01-01' GROUP BY u.id, u.name",
+            "index_suggestions": [
+              "orders.user_id",
+              "orders.status",
+              "users.signup_date"
+            ]
+          }
+        }
+      },
+      {
+        "unique_id": "7f6172d20008874c4e478a0c4d0bea66f91feb631be2de316bde59a82469e082",
+        "canonical": "SELECT user_id, order_id, order_date, SUM(quantity) OVER (PARTITION BY user_id ORDER BY order_date) AS running_total FROM orders",
+        "analysis": {
+          "entities": [
+            "orders"
+          ],
+          "attributes": [
+            "user_id",
+            "order_id",
+            "order_date",
+            "quantity"
+          ],
+          "query_type": "SELECT",
+          "optimization": {
+            "summary": "Consider creating an index on user_id and order_date to optimize query performance.",
+            "rewritten_query": null,
+            "index_suggestions": [
+              "orders.user_id",
+              "orders.order_date"
+            ]
+          }
+        }
+      },
+      {
+        "unique_id": "13e07757ec3f6c3aa7f6e207b87e9f08dfb9f95d17003cf9f19cdd85e04e35e4",
+        "canonical": "WITH recent_orders AS ( SELECT * FROM orders WHERE order_date > :param1 ) SELECT u.name, ro.order_id, p.product_name FROM users u JOIN recent_orders ro ON u.id = ro.user_id JOIN products p ON ro.product_id = p.product_id",
+        "analysis": {
+          "entities": [
+            "orders",
+            "users",
+            "products",
+            "recent_orders"
+          ],
+          "attributes": [
+            "order_date",
+            "name",
+            "order_id",
+            "user_id",
+            "product_id",
+            "product_name"
+          ],
+          "query_type": "SELECT",
+          "optimization": {
+            "summary": "Consider selecting only necessary columns instead of using SELECT * to improve performance.",
+            "rewritten_query": null,
+            "index_suggestions": [
+              "orders.order_date",
+              "recent_orders.user_id",
+              "products.product_id"
+            ]
+          }
+        }
+      },
+      {
+        "unique_id": "05c54df53294b34e1f7a02a6482a373f1adeccb4d5b6f033704e9024991a5590",
+        "canonical": "SELECT * FROM users WHERE active = :param1",
+        "analysis": {
+          "entities": [
+            "users"
+          ],
+          "attributes": [
+            "active"
+          ],
+          "query_type": "SELECT",
+          "optimization": {
+            "summary": "Consider selecting specific columns instead of using * for better performance.",
+            "rewritten_query": null,
+            "index_suggestions": [
+              "users.active"
+            ]
+          }
+        }
+      },
+      {
+        "unique_id": "05c54df53294b34e1f7a02a6482a373f1adeccb4d5b6f033704e9024991a5590",
+        "canonical": "SELECT * FROM users WHERE active = :param1",
+        "analysis": {
+          "entities": [
+            "users"
+          ],
+          "attributes": [
+            "active"
+          ],
+          "query_type": "SELECT",
+          "optimization": {
+            "summary": "Consider selecting specific columns instead of using * for better performance.",
+            "rewritten_query": null,
+            "index_suggestions": [
+              "users.active"
+            ]
+          }
+        }
+      },
+      {
+        "unique_id": "ad7cb2eb6806ea7b6a4031937d85785a5d6244e946b307a57276df2f60792748",
+        "canonical": "SELECT COUNT(*) FROM orders WHERE status = :param1",
+        "analysis": {
+          "entities": [
+            "orders"
+          ],
+          "attributes": [
+            "status"
+          ],
+          "query_type": "SELECT",
+          "optimization": {
+            "summary": "Consider adding an index on the status column for faster query performance.",
+            "rewritten_query": null,
+            "index_suggestions": [
+              "orders.status"
+            ]
+          }
+        }
+      },
+      {
+        "unique_id": "ad7cb2eb6806ea7b6a4031937d85785a5d6244e946b307a57276df2f60792748",
+        "canonical": "SELECT COUNT(*) FROM orders WHERE status = :param1",
+        "analysis": {
+          "entities": [
+            "orders"
+          ],
+          "attributes": [
+            "status"
+          ],
+          "query_type": "SELECT",
+          "optimization": {
+            "summary": "Consider adding an index on the status column for faster query performance.",
+            "rewritten_query": null,
+            "index_suggestions": [
+              "orders.status"
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

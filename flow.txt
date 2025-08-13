@@ -1,0 +1,17 @@
+                    sql_files/*.sql
+                            ↓
+                    Query aware split()
+                            ↓
+              Canonicalize query() → hash_text()
+                            ↓
+                Deduplication (normalized_map)
+                            ↓
+                Analyze with llm() → LLM JSON
+                            ↓
+                    Optimization results
+                            ↓
+  ┌───────────────────────┬─────────────────────────────┐
+  │ per_file_results.json │ duplicate_map.json          │
+  └───────────────────────┴─────────────────────────────┘
+                            ↓
+                  Reusable_library.sql
