@@ -38,7 +38,6 @@ load_dotenv()
 if OPENAI_API_KEY is None:
     raise RuntimeError("Set OPENAI_API_KEY environment variable before running.")
 
-import sqlparse
 import openai
 
 openai.api_key = OPENAI_API_KEY
@@ -150,7 +149,6 @@ def analyze_with_llm(query_text, model=MODEL, max_retries=3, retry_delay=1.0):
             text = response.choices[0].message.content
             parsed = safe_json_load(text)
             if parsed is None:
-                # if couldn't parse, wrap raw text in a minimal JSON fallback
                 parsed = {
                     "entity_attributes": {},
                     "summary": "llm returned unparsable json"
@@ -231,7 +229,7 @@ def main():
         })
         
         # safe small sleep to avoid bursts
-        time.sleep(0.3)
+        time.sleep(0.2)
 
     # Step D: Convert sets to sorted lists for JSON serialization
     for fp, v in per_file_results.items():
