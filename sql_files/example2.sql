@@ -18,8 +18,4 @@ JOIN products p ON ro.product_id = p.product_id;
 
 SELECT * FROM users WHERE active = 1;
 
-SELECT * FROM users WHERE active = 1;
-
-SELECT COUNT(*) FROM orders WHERE status = 'pending';
-
 SELECT COUNT(*) FROM orders WHERE status = 'pending';

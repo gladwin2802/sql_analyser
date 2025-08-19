@@ -52,9 +52,6 @@ SQL Analyzer Pipeline Flow
    }
 
 Key Features:
-- No duplication detection
-- No optimization suggestions
-- No reusable library generation
 - Focus on entity-attribute relationships
 - Per-file organization
 - Detailed query summaries
