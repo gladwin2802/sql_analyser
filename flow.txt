@@ -1,17 +1,60 @@
-                    sql_files/*.sql
-                            ↓
-                    Query aware split()
-                            ↓
-              Canonicalize query() → hash_text()
-                            ↓
-                Deduplication (normalized_map)
-                            ↓
-                Analyze with llm() → LLM JSON
-                            ↓
-                    Optimization results
-                            ↓
-  ┌───────────────────────┬─────────────────────────────┐
-  │ per_file_results.json │ duplicate_map.json          │
-  └───────────────────────┴─────────────────────────────┘
-                            ↓
-                  Reusable_library.sql
+SQL Analyzer Pipeline Flow
+==========================
+
+1. PROJECT SETUP
+   - Install dependencies: pip install -r requirements.txt
+   - Set OPENAI_API_KEY in environment or .env file
+   - Place SQL files in ./sql_files directory
+
+2. FILE PROCESSING
+   - Scan ./sql_files directory for *.sql files
+   - Read each SQL file content
+   - Split content into individual queries using query-aware splitter
+   - Track file path and query ID for each query
+
+3. QUERY ANALYSIS (Sequential Processing)
+   For each query:
+   - Send SQL query to OpenAI GPT-4o-mini
+   - Extract entity-attribute mappings (tables -> columns)
+   - Generate detailed query summary
+   - Handle API errors with retry logic
+   - Add 0.3s delay between API calls
+
+4. DATA AGGREGATION
+   - Initialize per-file results structure
+   - Merge entity-attributes from all queries in each file
+   - Store individual query analysis with file mapping
+   - Convert sets to sorted lists for JSON serialization
+
+5. OUTPUT GENERATION
+   - Create ./sql_analysis_output directory
+   - Generate per_file_results.json with structure:
+     * entity_attributes: {table: [columns]} mapping per file
+     * queries: array of individual query analyses
+     * Each query includes: query_id, sql, entity_attributes, summary
+
+6. OUTPUT STRUCTURE
+   {
+     "file_path": {
+       "entity_attributes": {
+         "table1": ["col1", "col2"],
+         "table2": ["col3", "col4"]
+       },
+       "queries": [
+         {
+           "query_id": 1,
+           "sql": "original SQL",
+           "entity_attributes": {"table1": ["col1"]},
+           "summary": "detailed explanation"
+         }
+       ]
+     }
+   }
+
+Key Features:
+- No duplication detection
+- No optimization suggestions
+- No reusable library generation
+- Focus on entity-attribute relationships
+- Per-file organization
+- Detailed query summaries

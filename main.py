@@ -1,17 +1,20 @@
 """
-sql_optimize_pipeline.py
+sql_analyzer.py
 
 Sequential pipeline:
 1. Read all .sql files in SQL_FOLDER
 2. Split into whole queries (query-aware splitter)
-3. Normalize and parameterize queries
-4. Deduplicate by normalized-hash (exact canonical duplicates)
-5. For each unique query: call LLM (gpt-4o-mini) sequentially to extract entities/attributes/query_type and optimization suggestions
-6. Aggregate and save JSON + suggested reusable SQL library
+3. For each query: call LLM (gpt-4o-mini) to extract entities/attributes and query summary
+4. Aggregate and save JSON with per-file results
 
-Requires: pip install openai
-Optional: pip install sqlparse  (for nicer SQL canonicalization)
-Set OPENAI_API_KEY in your environment.
+Setup:
+1. Install dependencies: pip install -r requirements.txt
+2. Set OPENAI_API_KEY in your environment or .env file
+3. Place SQL files in ./sql_files directory
+4. Run: python main.py
+
+Output:
+- per_file_results.json: Contains entity-attribute mappings and query summaries organized by file
 """
 
 import os
@@ -19,7 +22,6 @@ from dotenv import load_dotenv
 import re
 import glob
 import json
-import hashlib
 import time
 from dotenv import load_dotenv
 
@@ -93,62 +95,6 @@ def query_aware_split(sql_text):
     queries = [q for q in queries if re.search(r"\w", q)]
     return queries
 
-def simple_parameterize(sql):
-    """
-    Replace quoted strings and numeric literals with placeholders to canonicalize.
-    Returns param_sql and a mapping of parameter values (for trace if needed).
-    """
-    params = []
-    def repl_str(m):
-        params.append(m.group(0))
-        return ":param" + str(len(params))
-    # quoted strings '...' or "..."
-    sql = re.sub(r"('(?:\\'|[^'])*')", repl_str, sql)
-    sql = re.sub(r'("(?:\\"|[^"])*")', repl_str, sql)
-    # numeric literals (integers, decimals) - beware of identifiers; we only replace bare numbers
-    sql = re.sub(r"(?<![\w\):])(-?\d+\.\d+|-?\d+)(?![\w\(.:])", repl_str, sql)
-    return sql, params
-
-SQL_KEYWORDS = set([
-    "SELECT","FROM","WHERE","JOIN","INNER","LEFT","RIGHT","FULL","ON","GROUP","BY",
-    "ORDER","LIMIT","OFFSET","HAVING","UNION","ALL","DISTINCT","INSERT","INTO",
-    "VALUES","UPDATE","SET","DELETE","CREATE","WITH","AS","CASE","WHEN","THEN","END"
-])
-
-def basic_normalize(sql):
-    """
-    Basic normalization: uppercase keywords, collapse whitespace.
-    If sqlparse is available, use it to format then collapse whitespace.
-    """
-    s = sql.strip()
-    if sqlparse:
-        try:
-            s = sqlparse.format(s, keyword_case='upper', reindent=False, strip_comments=False)
-        except Exception:
-            pass
-    else:
-        # naive uppercase keywords
-        def upkw(m):
-            word = m.group(0)
-            if word.upper() in SQL_KEYWORDS:
-                return word.upper()
-            return word
-        s = re.sub(r"\b[a-zA-Z_][a-zA-Z0-9_]*\b", upkw, s)
-    # collapse whitespace to single space
-    s = re.sub(r"\s+", " ", s).strip()
-    return s
-
-def canonicalize_query(sql):
-    """
-    Parameterize + normalize -> canonical string used for hashing/dedup detection
-    """
-    param_sql, params = simple_parameterize(sql)
-    norm = basic_normalize(param_sql)
-    return norm
-
-def hash_text(text):
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
 def safe_json_load(s):
     """
     Attempt to load JSON from GPT response even if it has trailing commentary.
@@ -176,17 +122,16 @@ BASE_PROMPT = """
 You are an SQL analysis assistant. For the provided SQL query, produce a JSON object EXACTLY in this format (and nothing else):
 
 {{
-  "entities": ["table1", "schema.table2", ...],         // list of real table names or CTE names used (do not list aliases)
-  "attributes": ["col1", "col2", ...],                 // column names referenced (best-effort)
-  "query_type": "SELECT|INSERT|UPDATE|DELETE|CREATE|OTHER",
-  "optimization": {{
-     "summary": "short natural-language suggestion(s) for optimization",
-     "rewritten_query": "OPTIONAL: a recommended improved query text or parameterized template (if safe to rewrite). If none, return null",
-     "index_suggestions": ["table.col", ...]           // optional list of index suggestions
-  }}
+  "entity_attributes": {{
+    "table1": ["col1", "col2", ...],           // map table names to their columns used
+    "schema.table2": ["col3", "col4", ...],    // include schema if present
+    "cte_name": ["col5", "col6", ...]          // include CTE names if used
+  }},
+  "summary": "detailed explanation of what this query does, including any formulas, calculations, or business logic it implements"
 }}
 
 Be conservative: do not invent tables or columns that are not present. If you are unsure, state best-effort but keep to what's in the query text.
+Map each table/CTE to the specific columns that are referenced from it in the query.
 SQL_QUERY:
 ---
 {sql}
@@ -207,10 +152,8 @@ def analyze_with_llm(query_text, model=MODEL, max_retries=3, retry_delay=1.0):
             if parsed is None:
                 # if couldn't parse, wrap raw text in a minimal JSON fallback
                 parsed = {
-                    "entities": [],
-                    "attributes": [],
-                    "query_type": "OTHER",
-                    "optimization": {"summary": "llm returned unparsable json", "rewritten_query": None, "index_suggestions": []}
+                    "entity_attributes": {},
+                    "summary": "llm returned unparsable json"
                 }
             return parsed
         except Exception as e:
@@ -218,10 +161,8 @@ def analyze_with_llm(query_text, model=MODEL, max_retries=3, retry_delay=1.0):
             time.sleep(retry_delay * (1 + attempt))
     # after retries, return default
     return {
-        "entities": [],
-        "attributes": [],
-        "query_type": "OTHER",
-        "optimization": {"summary": "failed to call LLM", "rewritten_query": None, "index_suggestions": []}
+        "entity_attributes": {},
+        "summary": "failed to call LLM"
     }
 
 # ---------------------------------------------------
@@ -234,6 +175,7 @@ def ensure_out_dir():
 def main():
     ensure_out_dir()
     start_time = time.time()
+    
     # Step A: Read files -> extract queries
     queries_by_file = {}
     all_query_instances = []  # (file, query_id, raw_sql)
@@ -252,108 +194,57 @@ def main():
 
     print(f"Discovered {len(all_query_instances)} total queries across {len(file_paths)} files.")
 
-    # Step B: Normalize/canonicalize & dedupe exact normalized
-    normalized_map = {}  # canonical -> {hash, canonical_text, occurrences: [ (file, qid) ], raw_examples:[raw_sqls]}
-    for inst in all_query_instances:
-        raw = inst["sql"]
-        canonical = canonicalize_query(raw)
-        key_hash = hash_text(canonical)
-        if key_hash not in normalized_map:
-            normalized_map[key_hash] = {
-                "canonical": canonical,
-                "occurrences": [],
-                "raw_examples": []
-            }
-        normalized_map[key_hash]["occurrences"].append({"file": inst["file"], "query_id": inst["query_id"]})
-        normalized_map[key_hash]["raw_examples"].append(raw)
-
-    print(f"Found {len(normalized_map)} unique canonical queries after parameterization & normalization (exact dedupe).")
-
-    # Save unique queries file
-    unique_list = []
-    for k, v in normalized_map.items():
-        unique_list.append({
-            "id": k,
-            "canonical": v["canonical"],
-            "occurrences": v["occurrences"],
-            "raw_example": v["raw_examples"][0]
-        })
-    # Removed writing unique_queries.json as requested
-
-    # Step C: Sequentially call LLM on each unique canonical query to extract info + optimization suggestions
-    optimization_results = {}
-    total = len(unique_list)
-    for i, entry in enumerate(unique_list, start=1):
-        qid = entry["id"]
-        raw_example = entry["raw_example"]
-        print(f"[{i}/{total}] Analyzing unique query {qid} (occurrences: {len(entry['occurrences'])}) ...")
-        llm_out = analyze_with_llm(raw_example)
-        # keep what we need
-        optimization_results[qid] = {
-            "canonical": entry["canonical"],
-            "occurrences": entry["occurrences"],
-            "analysis": llm_out
-        }
-        # safe small sleep to avoid bursts (you can tune/remove)
-        time.sleep(0.3)
-
-    # Step D: Aggregate per-file results using the per-query analyses
+    # Step B: Initialize per-file results structure
     per_file_results = {}
     for path in file_paths:
-        per_file_results[path] = {"entities": set(), "attributes": set(), "query_types": set(), "queries": []}
+        per_file_results[path] = {
+            "entity_attributes": {}, 
+            "queries": []
+        }
 
-    for qhash, data in optimization_results.items():
-        analysis = data["analysis"]
-        occs = data["occurrences"]
-        for occ in occs:
-            fp = occ["file"]
-            per_file_results[fp]["entities"].update(analysis.get("entities", []))
-            per_file_results[fp]["attributes"].update(analysis.get("attributes", []))
-            per_file_results[fp]["query_types"].add(analysis.get("query_type", "OTHER"))
-            per_file_results[fp]["queries"].append({
-                "unique_id": qhash,
-                "canonical": data["canonical"],
-                "analysis": analysis
-            })
+    # Step C: Analyze each query and aggregate results
+    total = len(all_query_instances)
+    for i, inst in enumerate(all_query_instances, start=1):
+        file_path = inst["file"]
+        query_id = inst["query_id"]
+        raw_sql = inst["sql"]
+        
+        print(f"[{i}/{total}] Analyzing query {query_id} from {os.path.basename(file_path)} ...")
+        
+        # Call LLM for analysis
+        llm_out = analyze_with_llm(raw_sql)
+        
+        # Update per-file results - merge entity_attributes
+        file_entity_attrs = per_file_results[file_path]["entity_attributes"]
+        query_entity_attrs = llm_out.get("entity_attributes", {})
+        
+        for entity, attributes in query_entity_attrs.items():
+            if entity not in file_entity_attrs:
+                file_entity_attrs[entity] = set()
+            file_entity_attrs[entity].update(attributes)
+        
+        per_file_results[file_path]["queries"].append({
+            "query_id": query_id,
+            "sql": raw_sql,
+            "entity_attributes": query_entity_attrs,
+            "summary": llm_out.get("summary", "")
+        })
+        
+        # safe small sleep to avoid bursts
+        time.sleep(0.3)
 
-    # Convert sets to lists
+    # Step D: Convert sets to sorted lists for JSON serialization
     for fp, v in per_file_results.items():
-        v["entities"] = sorted(list(v["entities"]))
-        v["attributes"] = sorted(list(v["attributes"]))
-        v["query_types"] = sorted(list(v["query_types"]))
+        # Convert entity_attributes sets to sorted lists
+        for entity, attributes in v["entity_attributes"].items():
+            v["entity_attributes"][entity] = sorted(list(attributes))
 
-    # Step E: Detect duplicates map and build reusable library from LLM rewritten_query where given
-    duplicate_map = {}
-    for qid, data in optimization_results.items():
-        if len(data["occurrences"]) > 1:
-            query_text = data.get("canonical", "")
-            duplicate_map[query_text] = data["occurrences"]
-    reusable_queries = []
-    for qid, data in optimization_results.items():
-        opt = data["analysis"].get("optimization", {})
-        rewritten = opt.get("rewritten_query")
-        if rewritten and rewritten.strip().lower() != "null":
-            reusable_queries.append({
-                "id": qid,
-                "rewritten_query": rewritten,
-                "summary": opt.get("summary", "")
-            })
-
-    # Save final outputs
+    # Step E: Save final output
     with open(os.path.join(OUTPUT_DIR, "per_file_results.json"), "w", encoding="utf-8") as f:
         json.dump(per_file_results, f, indent=2)
-    with open(os.path.join(OUTPUT_DIR, "duplicate_map.json"), "w", encoding="utf-8") as f:
-        json.dump(duplicate_map, f, indent=2)
-
-    if reusable_queries:
-        with open(os.path.join(OUTPUT_DIR, "reusable_library.sql"), "w", encoding="utf-8") as f:
-            f.write("-- Reusable suggested queries (generated by LLM)\n\n")
-            for r in reusable_queries:
-                f.write(f"-- id: {r['id']}\n-- summary: {r['summary']}\n")
-                f.write(r['rewritten_query'].strip() + "\n\n")
 
     print("✅ Pipeline complete. Outputs saved to:", OUTPUT_DIR)
-    print(f"Unique queries: {len(unique_list)}, Reusable suggestions: {len(reusable_queries)}")
+    print(f"Total queries analyzed: {len(all_query_instances)}")
     print(f"Total time taken: {time.time() - start_time:.2f} seconds")
 
 if __name__ == "__main__":
