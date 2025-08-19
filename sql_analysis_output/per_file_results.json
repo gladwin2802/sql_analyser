@@ -1,5 +1,112 @@
 {
-  "./sql_files\\example.sql": {
+  "./sql_files\\example1.sql": {
+    "entity_attributes": {
+      "Customers": [
+        "CustomerID",
+        "CustomerName"
+      ],
+      "Orders": [
+        "EmployeeID",
+        "OrderDate",
+        "OrderID",
+        "RegionID",
+        "TotalAmount"
+      ],
+      "OrderDetails": [
+        "OrderID",
+        "ProductID",
+        "Quantity",
+        "UnitPrice"
+      ],
+      "Products": [
+        "CategoryID",
+        "ProductID",
+        "ProductName"
+      ],
+      "Categories": [
+        "CategoryName"
+      ],
+      "Employees": [
+        "EmployeeID",
+        "FirstName",
+        "LastName"
+      ],
+      "Regions": [
+        "RegionID",
+        "RegionName"
+      ]
+    },
+    "queries": [
+      {
+        "query_id": 1,
+        "sql": "SELECT \n    c.CustomerID,\n    c.CustomerName,\n    o.OrderID,\n    o.OrderDate,\n    o.TotalAmount,\n    RANK() OVER(PARTITION BY c.CustomerID ORDER BY o.OrderDate DESC) AS OrderRank,\n    (SELECT SUM(od.Quantity * od.UnitPrice)\n     FROM OrderDetails od\n     WHERE od.OrderID = o.OrderID) AS OrderItemsTotal\nFROM Customers c\nJOIN Orders o ON c.CustomerID = o.CustomerID\nWHERE o.OrderDate BETWEEN '2024-01-01' AND '2024-12-31'\nORDER BY c.CustomerName, o.OrderDate DESC",
+        "entity_attributes": {
+          "Customers": [
+            "CustomerID",
+            "CustomerName"
+          ],
+          "Orders": [
+            "OrderID",
+            "OrderDate",
+            "TotalAmount"
+          ],
+          "OrderDetails": [
+            "Quantity",
+            "UnitPrice"
+          ]
+        },
+        "summary": "This query retrieves customer information along with their associated orders within the year 2024. It selects the CustomerID and CustomerName from the Customers table, and OrderID, OrderDate, and TotalAmount from the Orders table. The query uses a window function RANK() to assign a rank to each order for a customer based on the order date, with the most recent order receiving the highest rank. Additionally, it calculates the total value of items ordered in each order using a subquery that multiplies the quantity and unit price from the OrderDetails table, summing these values for the relevant order. The results are filtered for orders placed between January 1, 2024, and December 31, 2024, and are ordered by customer name and order date in descending order."
+      },
+      {
+        "query_id": 2,
+        "sql": "SELECT \n    p.ProductID,\n    p.ProductName,\n    cat.CategoryName,\n    COUNT(*) AS TotalOrders,\n    AVG(od.UnitPrice) AS AverageUnitPrice,\n    SUM(od.Quantity) AS TotalQuantitySold,\n    SUM(od.Quantity * od.UnitPrice) AS TotalSales\nFROM Products p\nJOIN Categories cat ON p.CategoryID = cat.CategoryID\nJOIN OrderDetails od ON p.ProductID = od.ProductID\nJOIN Orders o ON od.OrderID = o.OrderID\nWHERE o.OrderDate >= '2024-06-01'\nGROUP BY p.ProductID, p.ProductName, cat.CategoryName\nHAVING SUM(od.Quantity) > 100\nORDER BY TotalSales DESC",
+        "entity_attributes": {
+          "Products": [
+            "ProductID",
+            "ProductName",
+            "CategoryID"
+          ],
+          "Categories": [
+            "CategoryName"
+          ],
+          "OrderDetails": [
+            "UnitPrice",
+            "Quantity",
+            "ProductID",
+            "OrderID"
+          ],
+          "Orders": [
+            "OrderDate"
+          ]
+        },
+        "summary": "This query retrieves product sales data including the product ID, product name, category name, total number of orders, average unit price, total quantity sold, and total sales for each product. It joins the Products, Categories, OrderDetails, and Orders tables to aggregate sales data, filtering for orders dated from June 1, 2024, and groups the results by product and category. Additionally, it only includes products with total quantities sold exceeding 100 and sorts the results by total sales in descending order."
+      },
+      {
+        "query_id": 3,
+        "sql": "SELECT \n    e.EmployeeID,\n    e.FirstName,\n    e.LastName,\n    r.RegionName,\n    o.OrderID,\n    o.OrderDate,\n    o.TotalAmount,\n    SUM(o.TotalAmount) OVER(PARTITION BY e.EmployeeID, r.RegionName ORDER BY o.OrderDate \n                              ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS CumulativeSales,\n    (SELECT AVG(TotalAmount) \n     FROM Orders \n     WHERE EmployeeID = e.EmployeeID) AS AvgEmployeeSales\nFROM Employees e\nJOIN Orders o ON e.EmployeeID = o.EmployeeID\nJOIN Regions r ON o.RegionID = r.RegionID\nWHERE o.OrderDate BETWEEN '2024-03-01' AND '2024-09-30'\nORDER",
+        "entity_attributes": {
+          "Employees": [
+            "EmployeeID",
+            "FirstName",
+            "LastName"
+          ],
+          "Orders": [
+            "OrderID",
+            "OrderDate",
+            "TotalAmount",
+            "EmployeeID",
+            "RegionID"
+          ],
+          "Regions": [
+            "RegionName",
+            "RegionID"
+          ]
+        },
+        "summary": "This query retrieves employee details including their sales performance by aggregating order amounts. It selects the EmployeeID, FirstName, LastName from the Employees table, and the RegionName from the Regions table, and the OrderID, OrderDate, and TotalAmount from the Orders table. The query calculates a running total of sales for each employee within each region, partitioned by EmployeeID and RegionName and ordered by OrderDate, called CumulativeSales. Additionally, it computes the average order total for each employee through a subquery that averages the TotalAmount from the Orders table where the EmployeeID matches. The results are filtered to include only orders placed between March 1, 2024, and September 30, 2024."
+      }
+    ]
+  },
+  "./sql_files\\example2.sql": {
     "entity_attributes": {
       "users": [
         "*",
@@ -40,7 +147,7 @@
             "status"
           ]
         },
-        "summary": "This query retrieves the 'id' and 'name' of users from the 'users' table who signed up after January 1, 2025. Additionally, it calculates the number of completed orders for each user by counting entries in the 'orders' table where the 'user_id' matches the user's 'id' and the 'status' of the order is 'completed'. The result includes a column 'completed_orders' representing this count."
+        "summary": "This query retrieves a list of users from the 'users' table who signed up after January 1, 2025. For each user, it also calculates the number of completed orders from the 'orders' table, where the order's user_id matches the user's id and the order status is 'completed'. The output includes the user's id, name, and the count of their completed orders."
       },
       {
         "query_id": 2,
@@ -53,24 +160,25 @@
             "quantity"
           ]
         },
-        "summary": "The query selects the user ID, order ID, and order date from the 'orders' table. It also computes a running total of the quantity of orders for each user, partitioned by 'user_id' and ordered by 'order_date'. This running total is calculated using the SUM() window function, which adds up the quantity of orders in chronological order for each user."
+        "summary": "This query retrieves the user IDs, order IDs, and order dates from the 'orders' table, and calculates a running total of the quantity of orders for each user, partitioned by the user ID and ordered by the order date. The running total is calculated using the SUM function along with the OVER clause, which allows for cumulative sums based on the specified partitioning and ordering criteria."
       },
       {
         "query_id": 3,
         "sql": "WITH recent_orders AS (\n    SELECT * FROM orders WHERE order_date > '2025-07-01'\n)\nSELECT u.name, ro.order_id, p.product_name\nFROM users u\nJOIN recent_orders ro ON u.id = ro.user_id\nJOIN products p ON ro.product_id = p.product_id",
         "entity_attributes": {
+          "users": [
+            "name",
+            "id"
+          ],
           "orders": [
+            "order_id",
             "order_date",
             "user_id",
             "product_id"
           ],
-          "users": [
-            "id",
-            "name"
-          ],
           "products": [
-            "product_id",
-            "product_name"
+            "product_name",
+            "product_id"
           ],
           "recent_orders": [
             "order_id",
@@ -78,7 +186,7 @@
             "product_id"
           ]
         },
-        "summary": "The query selects the names of users, order IDs, and product names for orders placed after July 1, 2025. It creates a Common Table Expression (CTE) named recent_orders that retrieves all columns from the orders table for those recent orders. Then, it joins this CTE with users and products tables to get the associated user names and product names for each order."
+        "summary": "This query first creates a Common Table Expression (CTE) named 'recent_orders' that selects all columns from the 'orders' table where the 'order_date' is greater than July 1, 2025. The main query then selects the names of users, order IDs from recent orders, and the product names by joining the 'users' table with the 'recent_orders' CTE on the user ID, and then with the 'products' table on the product ID. This effectively retrieves a list of user names along with their recent order IDs and corresponding product names."
       },
       {
         "query_id": 4,
@@ -88,138 +196,17 @@
             "*"
           ]
         },
-        "summary": "This query retrieves all columns from the 'users' table for those records where the 'active' column has a value of 1, effectively filtering the results to only include active users."
+        "summary": "This query selects all columns from the 'users' table where the 'active' status is equal to 1, effectively returning a dataset of users who are currently active."
       },
       {
         "query_id": 5,
-        "sql": "SELECT * FROM users WHERE active = 1",
-        "entity_attributes": {
-          "users": [
-            "*"
-          ]
-        },
-        "summary": "This query selects all columns from the 'users' table where the 'active' column has a value of 1. It retrieves data only for users who are considered active."
-      },
-      {
-        "query_id": 6,
         "sql": "SELECT COUNT(*) FROM orders WHERE status = 'pending'",
         "entity_attributes": {
           "orders": [
             "status"
           ]
         },
-        "summary": "This query counts the number of records in the 'orders' table where the 'status' column is equal to 'pending'. It returns a single integer value representing the total count of such orders."
-      },
-      {
-        "query_id": 7,
-        "sql": "SELECT COUNT(*) FROM orders WHERE status = 'pending'",
-        "entity_attributes": {
-          "orders": [
-            "status"
-          ]
-        },
-        "summary": "This query counts the number of records in the 'orders' table where the 'status' column has the value 'pending'. It retrieves a single integer value representing the total count of such records."
-      }
-    ]
-  },
-  "./sql_files\\example1.sql": {
-    "entity_attributes": {
-      "Customers": [
-        "CustomerID",
-        "CustomerName"
-      ],
-      "Orders": [
-        "OrderDate",
-        "OrderID",
-        "TotalAmount"
-      ],
-      "OrderDetails": [
-        "OrderID",
-        "ProductID",
-        "Quantity",
-        "UnitPrice"
-      ],
-      "Products": [
-        "CategoryID",
-        "ProductID",
-        "ProductName"
-      ],
-      "Categories": [
-        "CategoryName"
-      ],
-      "Employees": [
-        "EmployeeID",
-        "FirstName",
-        "LastName"
-      ],
-      "Regions": [
-        "RegionName"
-      ]
-    },
-    "queries": [
-      {
-        "query_id": 1,
-        "sql": "SELECT \n    c.CustomerID,\n    c.CustomerName,\n    o.OrderID,\n    o.OrderDate,\n    o.TotalAmount,\n    RANK() OVER(PARTITION BY c.CustomerID ORDER BY o.OrderDate DESC) AS OrderRank,\n    (SELECT SUM(od.Quantity * od.UnitPrice)\n     FROM OrderDetails od\n     WHERE od.OrderID = o.OrderID) AS OrderItemsTotal\nFROM Customers c\nJOIN Orders o ON c.CustomerID = o.CustomerID\nWHERE o.OrderDate BETWEEN '2024-01-01' AND '2024-12-31'\nORDER BY c.CustomerName, o.OrderDate DESC",
-        "entity_attributes": {
-          "Customers": [
-            "CustomerID",
-            "CustomerName"
-          ],
-          "Orders": [
-            "OrderID",
-            "OrderDate",
-            "TotalAmount"
-          ],
-          "OrderDetails": [
-            "Quantity",
-            "UnitPrice"
-          ]
-        },
-        "summary": "This query retrieves customer information along with their orders within the year 2024. It selects the CustomerID and CustomerName from the Customers table, and OrderID, OrderDate, and TotalAmount from the Orders table. It uses a window function RANK() to assign a rank to orders per customer based on the order date, with the most recent orders receiving the highest rank. Additionally, it calculates the total amount of items in each order by summing the product of quantity and unit price from the OrderDetails table, filtered by the corresponding OrderID. The results are then ordered by customer name and order date in descending order."
-      },
-      {
-        "query_id": 2,
-        "sql": "SELECT \n    p.ProductID,\n    p.ProductName,\n    cat.CategoryName,\n    COUNT(*) AS TotalOrders,\n    AVG(od.UnitPrice) AS AverageUnitPrice,\n    SUM(od.Quantity) AS TotalQuantitySold,\n    SUM(od.Quantity * od.UnitPrice) AS TotalSales\nFROM Products p\nJOIN Categories cat ON p.CategoryID = cat.CategoryID\nJOIN OrderDetails od ON p.ProductID = od.ProductID\nJOIN Orders o ON od.OrderID = o.OrderID\nWHERE o.OrderDate >= '2024-06-01'\nGROUP BY p.ProductID, p.ProductName, cat.CategoryName\nHAVING SUM(od.Quantity) > 100\nORDER BY TotalSales DESC",
-        "entity_attributes": {
-          "Products": [
-            "ProductID",
-            "ProductName",
-            "CategoryID"
-          ],
-          "Categories": [
-            "CategoryName"
-          ],
-          "OrderDetails": [
-            "UnitPrice",
-            "Quantity",
-            "ProductID",
-            "OrderID"
-          ],
-          "Orders": [
-            "OrderDate"
-          ]
-        },
-        "summary": "This query retrieves product sales data for products sold after June 1, 2024. It joins the Products, Categories, OrderDetails, and Orders tables to get relevant information such as product ID, product name, and category name. It calculates the total number of orders for each product (TotalOrders), the average unit price of the products sold (AverageUnitPrice), the total quantity sold (TotalQuantitySold), and the total sales volume (TotalSales). The results are grouped by product ID, product name, and category name, with a filter to only include products where the total quantity sold exceeds 100. Finally, the results are ordered in descending order of total sales."
-      },
-      {
-        "query_id": 3,
-        "sql": "SELECT \n    e.EmployeeID,\n    e.FirstName,\n    e.LastName,\n    r.RegionName,\n    o.OrderID,\n    o.OrderDate,\n    o.TotalAmount,\n    SUM(o.TotalAmount) OVER(PARTITION BY e.EmployeeID, r.RegionName ORDER BY o.OrderDate \n                              ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS CumulativeSales,\n    (SELECT AVG(TotalAmount) \n     FROM Orders \n     WHERE EmployeeID = e.EmployeeID) AS AvgEmployeeSales\nFROM Employees e\nJOIN Orders o ON e.EmployeeID = o.EmployeeID\nJOIN Regions r ON o.RegionID = r.RegionID\nWHERE o.OrderDate BETWEEN '2024-03-01' AND '2024-09-30'\nORDER",
-        "entity_attributes": {
-          "Employees": [
-            "EmployeeID",
-            "FirstName",
-            "LastName"
-          ],
-          "Orders": [
-            "OrderID",
-            "OrderDate",
-            "TotalAmount"
-          ],
-          "Regions": [
-            "RegionName"
-          ]
-        },
-        "summary": "This query retrieves employee sales information, including the employee's ID, first and last names, the region name associated with each order, and order details such as order ID, order date, and total amount. It calculates a cumulative sales total for each employee by region, partitioned by EmployeeID and RegionName, and ordered by OrderDate. Additionally, it computes the average sales amount for each employee across all their orders. The query filters orders to include only those placed within a specified date range from March 1, 2024, to September 30, 2024."
+        "summary": "This query counts the total number of entries in the 'orders' table where the 'status' column has the value 'pending'."
       }
     ]
   }
